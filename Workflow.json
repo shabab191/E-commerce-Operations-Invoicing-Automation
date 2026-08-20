@@ -1,0 +1,386 @@
+{
+  "name": "E-commerce Order Alert, Invoice & Daily Sales Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "e4cda2c6-756b-4464-8823-a226b4c82982",
+      "name": "Schedule - Every 5 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://your-store-api.com/api/seller/orders",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "sort",
+              "value": "newest"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_STORE_API_BEARER_TOKEN_HERE"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c903588-d6e0-4d47-b214-73d82ff3f636",
+      "name": "Get Latest Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        608,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('node');\nconst response = $input.first().json;\nconst orders = response.data?.orders || [];\n\nconst lastSeenTime = staticData.lastOrderTime ? new Date(staticData.lastOrderTime) : new Date(0);\nconst newOrders = [];\n\nfor (const order of orders) {\n  const createdAt = new Date(order.createdAt);\n  if (createdAt > lastSeenTime) {\n    newOrders.push(order);\n  }\n}\n\nif (orders.length > 0) {\n  const latestTime = new Date(orders[0].createdAt);\n  if (latestTime > lastSeenTime) {\n    staticData.lastOrderTime = latestTime.toISOString();\n  }\n}\n\nreturn newOrders.map(order => {\n  const itemsHtml = (order.items || []).map(item => {\n    const size = item.variant?.Size ? ` (Size: ${item.variant.Size})` : '';\n    return `<li>${item.name}${size} — Qty: ${item.quantity} × ৳${item.price} = ৳${item.total}</li>`;\n  }).join('');\n\n  return {\n    json: {\n      ...order,\n      orderNumberDisplay: order.displayOrderNumber || order.orderNumber,\n      customerName: order.customerInfo?.name || order.guestInfo?.name || 'N/A',\n      customerPhone: order.customerInfo?.phone || order.guestInfo?.phone || 'N/A',\n      totalAmount: order.pricing?.total ?? order.orderSummary?.total ?? 0,\n      fullAddress: order.shippingAddress\n        ? `${order.shippingAddress.address}, ${order.shippingAddress.area}, ${order.shippingAddress.city}`\n        : 'N/A',\n      itemsHtml\n    }\n  };\n});"
+      },
+      "id": "e9c68b61-3222-437f-871d-4dffce3ebb5f",
+      "name": "Detect New Orders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your-email@gmail.com",
+        "toEmail": "admin1@gmail.com,admin2@gmail.com",
+        "subject": "🔔 নতুন অর্ডার এসেছে - Order #{{$json.order_number || $json.id}}",
+        "html": "=<h2>🛍️ নতুন অর্ডার এসেছে - Invoice</h2>\n<p><b>Order #:</b> {{$json.orderNumberDisplay}}</p>\n<p><b>Date:</b> {{$json.createdAt}}</p>\n<p><b>Customer:</b> {{$json.customerName}}</p>\n<p><b>Phone:</b> {{$json.customerPhone}}</p>\n<p><b>Address:</b> {{$json.fullAddress}}</p>\n<p><b>Payment Method:</b> {{$json.paymentMethod}}</p>\n<p><b>Payment Status:</b> {{$json.paymentStatus}}</p>\n<p><b>Order Status:</b> {{$json.orderStatus}}</p>\n<h3>Items:</h3>\n<ul>{{$json.itemsHtml}}</ul>\n<hr>\n<p><b>Subtotal:</b> ৳{{$json.pricing.subtotal}}</p>\n<p><b>Shipping:</b> ৳{{$json.pricing.shipping}}</p>\n<p><b>Discount:</b> ৳{{$json.pricing.discount}}</p>\n<p><b>Total:</b> ৳{{$json.totalAmount}}</p>",
+        "options": {
+          "appendAttribution": false,
+          "fileAttachments": "data"
+        }
+      },
+      "id": "42ac2284-fd0b-48fc-bda5-e0965d4ef0d3",
+      "name": "Send New Order Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1840,
+        208
+      ],
+      "webhookId": "95846d44-4f41-4343-8f13-dc9d6bb23be8",
+      "credentials": {
+        "smtp": {
+          "id": "YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "9a6ab533-5855-45d8-a0d9-ba56bb0f37ce",
+      "name": "Schedule - Daily 11:55 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://your-store-api.com/api/seller/orders",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "sort",
+              "value": "newest"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_STORE_API_BEARER_TOKEN_HERE"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e833e19-0eef-4515-b943-2e0493954da8",
+      "name": "Get Today's Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst orders = response.data?.orders || [];\n\nconst today = new Date().toDateString();\nconst todaysOrders = orders.filter(o => new Date(o.createdAt).toDateString() === today);\n\nlet totalSales = 0;\nconst statusCounts = {};\n\nfor (const order of todaysOrders) {\n  const amount = order.pricing?.total ?? order.orderSummary?.total ?? 0;\n  totalSales += amount;\n  const status = order.orderStatus || 'unknown';\n  statusCounts[status] = (statusCounts[status] || 0) + 1;\n}\n\nconst statusRows = Object.entries(statusCounts)\n  .map(([status, count]) => `<li>${status}: ${count}</li>`)\n  .join('');\n\nconst summaryHtml = `\n<h2>Store - Daily Sales Summary</h2>\n<p><b>Date:</b> ${new Date().toLocaleDateString()}</p>\n<p><b>Total Orders Today:</b> ${todaysOrders.length}</p>\n<p><b>Total Sales:</b> ৳${totalSales.toFixed(2)}</p>\n<h3>Status Breakdown:</h3>\n<ul>${statusRows}</ul>\n`;\n\nreturn [{ json: { totalOrders: todaysOrders.length, totalSales, statusCounts, summaryHtml } }];"
+      },
+      "id": "744f6fa8-dc00-4356-8446-06a2a52d9372",
+      "name": "Calculate Sales Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your-email@gmail.com",
+        "toEmail": "admin1@gmail.com,admin2@gmail.com",
+        "subject": "📊 Daily Sales Summary - Store - {{$now.format('yyyy-MM-dd')}}",
+        "html": "={{$json.summaryHtml}}",
+        "options": {}
+      },
+      "id": "960d3815-c7c8-4215-8ff9-a283199f8be1",
+      "name": "Send Daily Summary Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1328,
+        560
+      ],
+      "webhookId": "649dcf57-666a-4b29-916d-2b40381cd5ab",
+      "credentials": {
+        "smtp": {
+          "id": "YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $input.first().json;\n\nconst items = (order.items || []).map(item => ({\n  name: item.name + (item.variant?.Size ? ` (Size: ${item.variant.Size})` : ''),\n  quantity: item.quantity,\n  unit_cost: item.price\n}));\n\nconst invoicePayload = {\n  from: \"Store Name\",\n  to: `${order.customerName}\\n${order.customerPhone}\\n${order.fullAddress}`,\n  number: order.orderNumberDisplay,\n  date: new Date(order.createdAt).toISOString().split('T')[0],\n  currency: \"BDT\",\n  items,\n  shipping: order.pricing?.shipping || 0,\n  notes: \"Thank you for your order!\",\n  terms: `Payment Method: ${order.paymentMethod} | Payment Status: ${order.paymentStatus}`\n};\n\nreturn [{\n  json: {\n    ...order,\n    invoicePayload\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        336
+      ],
+      "id": "760bea21-7c70-4b45-b29e-93a153c4848f",
+      "name": "Build invoice Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://invoice-generator.com",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_INVOICE_GENERATOR_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.invoicePayload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1392,
+        80
+      ],
+      "id": "57dcfe5e-e175-4ea2-959b-48ca40fa44df",
+      "name": "Generate Invoice Pdf"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.customerInfo?.email || $json.guestInfo?.email }}",
+        "subject": "=Order Invoice - Store (Order #{{$json.orderNumberDisplay}})",
+        "message": "=<h2>Dear {{ $json.customerName }},</h2>\n<p>Thank you for your order!</p>\n<p>Your order has been received successfully. Please find attached your PDF invoice.</p>\n<br>\n<p><b>Order Number:</b> {{$json.orderNumberDisplay}}</p>\n<p><b>Total Amount:</b> ৳{{$json.totalAmount}}</p>\n<br>\n<p>Best regards,<br><b>Store Team</b></p>",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1632,
+        368
+      ],
+      "id": "f6125ee5-c7b4-424f-b1b0-779ac81d6d9c",
+      "name": "Send a message",
+      "webhookId": "b797536c-3801-4b3b-a670-65ba2d314e61",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule - Every 5 Min": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Orders": {
+      "main": [
+        [
+          {
+            "node": "Detect New Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect New Orders": {
+      "main": [
+        [
+          {
+            "node": "Build invoice Payload",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send New Order Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Daily 11:55 PM": {
+      "main": [
+        [
+          {
+            "node": "Get Today's Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Today's Orders": {
+      "main": [
+        [
+          {
+            "node": "Calculate Sales Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Sales Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Summary Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build invoice Payload": {
+      "main": [
+        [
+          {
+            "node": "Generate Invoice Pdf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Invoice Pdf": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}
